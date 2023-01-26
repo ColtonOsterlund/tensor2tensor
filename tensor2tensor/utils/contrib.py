@@ -1,31 +1,12 @@
-# coding=utf-8
-# Copyright 2022 The Tensor2Tensor Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Wrappers around tf.contrib to dynamically import contrib packages.
-
 This makes sure that libraries depending on T2T and TF2, do not crash at import.
 """
-
 from __future__ import absolute_import
 from __future__ import division  # Not necessary in a Python 3-only module
 from __future__ import print_function  # Not necessary in a Python 3-only module
-
 from absl import logging
 import tensorflow.compat.v1 as tf
 from tensorflow.compat.v1 import estimator as tf_estimator
-
 # Check if we have contrib available
 try:
   from tensorflow.contrib import slim as tf_slim  # pylint: disable=g-import-not-at-top
@@ -36,6 +17,7 @@ except:  # pylint: disable=bare-except
   # these as needed.
   import tensorflow_addons as tfa  # pylint: disable=g-import-not-at-top
   import tf_slim  # pylint: disable=g-import-not-at-top
+  import tensorflow as tf2
   is_tf2 = True
 
 
@@ -47,13 +29,16 @@ def err_if_tf2(msg='err'):
     else:
       msg = 'contrib is unavailable in tf2.'
       logging.info(msg)
-
-
 class DummyModule(object):
-
   def __init__(self, **kw):
     for k, v in kw.items():
       setattr(self, k, v)
+
+  def load_checkpoint(self, ckpt_dir):
+      return tf2.train.load_checkpoint(ckpt_dir)
+
+  def get_trainable_variables(self):
+      return tf.trainable_variables()
 
 
 def slim():
