@@ -171,6 +171,10 @@ def transformer_decode(decoder_function,
       save_weights_to=attention_weights,
       losses=losses,
       **kwargs)
+  
+  if hparams.get("num_trainable_top_decoder_layers", -1) == 0:
+    decoder_output = tf.stop_gradient(decoder_output)
+
 
   if (common_layers.is_xla_compiled() and
       hparams.mode == tf_estimator.ModeKeys.TRAIN):
@@ -195,6 +199,30 @@ class Transformer(t2t_model.T2TModel):
     self._init_cache_fn = _init_transformer_cache
     self._prepare_encoder_fn = transformer_prepare_encoder
     self._prepare_decoder_fn = transformer_prepare_decoder
+
+    # -1 means train all weights.
+    if self.hparams.get("num_trainable_top_decoder_layers", -1) < 0:
+      t2t_model.log_info(
+          "num_trainable_top_decoder_layers is negative so training all weights."
+      )
+    elif self.hparams.shared_embedding_and_softmax_weights:
+      t2t_model.log_info(
+          "Setting hparams.shared_embedding_and_softmax_weights to False, "
+          "because hparam.num_trainable_top_decoder_layers is being used.")
+
+      # When hparam.num_trainable_top_decoder_layers is set to N >= 0 we will
+      # freeze (not train) every variable except the N top decoder layers and
+      # the (pre-)softmax matrix. For any N >= 0 we will freeze the encoder and
+      # input/target embeddings. This also means we will not share the
+      # (pre-)softmax matrix with input/target embeddings otherwise they will be
+      # trained as well.
+      self.hparams.shared_embedding_and_softmax_weights = False
+
+      # If hparams.shared_embedding_and_softmax_weights was previously True,
+      # then input and target embeddings were being shared.
+      # To make sure it they embeddings continue to be shared, we need to set
+      # hparams.shared_embedding to True.
+      self.hparams.shared_embedding = True
 
   def encode(self, inputs, target_space, hparams, features=None, losses=None):
     """Encode transformer inputs, see transformer_encode."""
@@ -1674,6 +1702,13 @@ def transformer_decoder(decoder_input,
   Returns:
     y: a Tensors
   """
+
+  num_trainable_top_decoder_layers = hparams.get(
+      "num_trainable_top_decoder_layers", -1)  # -1 means train all weights.
+
+  if num_trainable_top_decoder_layers >= 0 and encoder_output is not None:
+    encoder_output = tf.stop_gradient(encoder_output)
+
   x = decoder_input
 
   mlperf_log.transformer_print(
@@ -1694,8 +1729,12 @@ def transformer_decoder(decoder_input,
       hparams=hparams)
 
   with tf.variable_scope(name):
-    for layer_idx in range(hparams.num_decoder_layers or
-                           hparams.num_hidden_layers):
+    num_layers = hparams.num_decoder_layers or hparams.num_hidden_layers
+    for layer_idx in range(num_layers):
+      
+      if num_trainable_top_decoder_layers == num_layers - layer_idx:
+        x = tf.stop_gradient(x)
+
       x = transformer_decoder_layer(
           x,
           decoder_self_attention_bias,

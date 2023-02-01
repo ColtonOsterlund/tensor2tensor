@@ -350,6 +350,8 @@ def basic_params1():
       memory_height=1,
       # Whether to use GPU automatic mixed precision (via graph rewrite)
       gpu_automatic_mixed_precision=False,
+      # Number of layers to train
+      num_trainable_top_decoder_layers=-1,
   )
 
 
